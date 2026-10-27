@@ -1,4 +1,5 @@
 #include "signals.hpp"
+#include <cerrno>
 #include <unistd.h>
 #include <sys/wait.h>
 
@@ -11,25 +12,38 @@ volatile sig_atomic_t Signals::gotSigchld_ = 0;
 void Signals::handleSigint(int signum) {
     (void)signum;
 
+    // A handler runs in the middle of whatever the program was doing, and
+    // the calls below may set errno. The value the interrupted code had is
+    // put back, so that a handler cannot change what the program sees.
+    const int savedErrno = errno;
+
     if (foregroundPid_ > 0) {
         kill(foregroundPid_, SIGINT);
     } else {
         const char msg[] = "\n";
         write(STDOUT_FILENO, msg, sizeof(msg) - 1);
     }
+
+    errno = savedErrno;
 }
 
 void Signals::handleSigtstp(int signum) {
     (void)signum;
 
+    const int savedErrno = errno;
+
     if (foregroundPid_ > 0) {
         kill(foregroundPid_, SIGTSTP);
     }
+
+    errno = savedErrno;
 }
 
 void Signals::handleSigchld(int signum) {
     (void)signum;
     gotSigchld_ = 1;
+
+    const int savedErrno = errno;
 
     int status;
     int pid;
@@ -38,16 +52,22 @@ void Signals::handleSigchld(int signum) {
             childStatusCallback_(pid, status);
         }
     }
+
+    errno = savedErrno;
 }
 
 void Signals::handleSigquit(int signum) {
     (void)signum;
+
+    const int savedErrno = errno;
 
     if (foregroundPid_ > 0) {
         kill(foregroundPid_, SIGQUIT);
     } else {
         _exit(0);
     }
+
+    errno = savedErrno;
 }
 
 void Signals::setup() {
